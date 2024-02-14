@@ -1,0 +1,54 @@
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#include <WiFiNINA.h>  // WiFi 라이브러리 수정
+
+#define DHTPIN 2        // DHT 센서에 연결된 핀.
+#define DHTTYPE DHT22    // DHT 22 (AM2302)
+
+const char* ssid = "aiwd0113";
+const char* password = "xlms2073";
+
+DHT_Unified dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial) {
+    ; // 시리얼 통신이 활성화될 때까지 대기
+  }
+
+  dht.begin();
+
+  // Connect to Wi-Fi
+  Serial.print("Connecting to WiFi");
+  while (WiFi.begin(ssid, password) != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected to WiFi");
+}
+
+void loop() {
+  delay(2000);  // 2초 딜레이를 추가
+
+  sensors_event_t event;
+
+  dht.temperature().getEvent(&event);
+  if (!isnan(event.temperature)) {
+    Serial.print("Temp: ");
+    Serial.print(event.temperature);
+    Serial.println(" ^C");
+  } else {
+    Serial.println("Error reading temperature!");
+  }
+
+  dht.humidity().getEvent(&event);
+  if (!isnan(event.relative_humidity)) {
+    Serial.print("Humi: ");
+    Serial.print(event.relative_humidity);
+    Serial.println("%");
+  } else {
+    Serial.println("Error reading humidity!");
+  }
+}

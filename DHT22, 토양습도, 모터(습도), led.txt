@@ -1,0 +1,124 @@
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#include <WiFiNINA.h>
+
+#define DHTPIN 2
+#define DHTTYPE DHT22
+#define SOIL_MOISTURE_PIN 0 // 토양습도 센서를 아두이노의 아날로그 핀 A0에 연결
+#define MOTOR_PIN 13         // 모터를 아두이노의 디지털 핀 D3에 연결
+#define LED_PIN 12           // LED를 아두이노의 디지털 핀 D13에 연결
+
+const char* ssid = "aiwd0113";
+const char* password = "xlms2073";
+const char* serverAddress = "192.168.62.248";  // 웹 서버 주소
+const int serverPort = 80;                      // 웹 서버 포트
+
+DHT_Unified dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial) {
+    ;
+  }
+
+  dht.begin();
+
+  Serial.print("Connecting to WiFi");
+  while (WiFi.begin(ssid, password) != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected to WiFi");
+
+  pinMode(MOTOR_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW); // Turn on LED initially
+}
+
+void loop() {
+  
+  delay(2000);
+
+  sensors_event_t event;
+
+  float temperature = 0.0;
+  float humidity = 0.0;
+
+  int soilMoistureRaw = analogRead(SOIL_MOISTURE_PIN);
+  // 아날로그 값을 0에서 100% 범위로 변환
+  int soilMoisture = map(soilMoistureRaw, 0, 1023, 100, 0);
+
+  dht.temperature().getEvent(&event);
+  if (!isnan(event.temperature)) {
+    temperature = event.temperature;
+    Serial.print("Temp: ");
+    Serial.print(temperature);
+    Serial.println(" °C");
+  } else {
+    Serial.println("Error reading temperature!");
+  }
+
+  dht.humidity().getEvent(&event);
+  if (!isnan(event.relative_humidity)) {
+    humidity = event.relative_humidity;
+    Serial.print("Humi: ");
+    Serial.print(humidity);
+    Serial.println("%");
+
+    // 모터 제어
+    if (humidity <= 10) {
+      // Humidity is 25% or below, start the motor
+      digitalWrite(MOTOR_PIN, LOW);
+    } else {
+      // Humidity is above 25%, stop the motor
+      digitalWrite(MOTOR_PIN, HIGH);
+    }
+  } else {
+    Serial.println("Error reading humidity!");
+  }
+
+  // 토양습도 읽기
+  Serial.print("토양습도: ");
+  Serial.print(soilMoisture);
+  Serial.println("%");
+
+  // 데이터를 웹 서버로 전송
+  sendToServer(temperature, humidity, soilMoisture);
+}
+
+void sendToServer(float temperature, float humidity, int soilMoisture) {
+  WiFiClient client;
+
+  if (client.connect(serverAddress, serverPort)) {
+    // HTTP POST 요청을 만듭니다.
+    String path = "/index.php"; // 고정된 경로
+    String postData = "&temperature=" + String(temperature, 2) +
+                      "&humidity=" + String(humidity, 2) +
+                      "&soil_humidity=" + String(soilMoisture);  
+    client.print("POST " + path + " HTTP/1.1\r\n");
+    client.print("Host: ");
+    client.print(serverAddress);
+    client.print("\r\n");
+    client.print("Content-Type: application/x-www-form-urlencoded\r\n");
+    client.print("Content-Length: ");
+    client.print(postData.length());
+    client.print("\r\n\r\n");
+    client.print(postData);
+
+    Serial.println("데이터가 서버로 전송되었습니다");
+
+    // 응답을 받습니다.
+    while (client.connected() && !client.available()) delay(1);
+    while (client.available()) {
+      char c = client.read();
+      Serial.print(c);
+    }
+  } else {
+    Serial.println("서버에 연결할 수 없습니다");
+  }
+
+  // 연결을 닫습니다.
+  client.stop();
+}
